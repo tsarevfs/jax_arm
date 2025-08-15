@@ -31,7 +31,7 @@ jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
-env_name = "PandaOpenCabinet"
+env_name = "PandaPickCubeCartesian"
 env_cfg = manipulation.get_default_config(env_name)
 
 SUFFIX = None
@@ -51,41 +51,12 @@ wandb.init(
     config=env_cfg.to_dict(),
 )
 
-make_networks_factory = functools.partial(
-    ppo_networks.make_ppo_networks, policy_hidden_layer_sizes=(32, 32, 32, 32)
-)
-
 ckpt_path = epath.Path("checkpoints").resolve() / exp_name
 ckpt_path.mkdir(parents=True, exist_ok=True)
 print(f"Checkpoint path: {ckpt_path}")
 
 with open(ckpt_path / "config.json", "w") as fp:
   json.dump(env_cfg.to_dict(), fp, indent=4)
-
-
-def policy_params_fn(current_step, make_policy, params):
-  orbax_checkpointer = ocp.PyTreeCheckpointer()
-  save_args = orbax_utils.save_args_from_target(params)
-  path = ckpt_path / f"{current_step}"
-  orbax_checkpointer.save(path, params, force=True, save_args=save_args)
-
-_train_params = manipulation_params.brax_ppo_config(env_name)
-train_params = dict(_train_params)
-train_params['seed'] = 1
-train_params['num_evals'] = 100
-del train_params["network_factory"]
-
-train_fn = functools.partial(
-  ppo.train,
-  **dict(train_params),
-  network_factory=functools.partial(
-    ppo_networks.make_ppo_networks,
-    policy_hidden_layer_sizes=_train_params.network_factory.policy_hidden_layer_sizes
-  ))
-
-times = [datetime.now()]
-x_data = []
-
 
 def progress(num_steps, metrics):
   times.append(datetime.now())
@@ -95,7 +66,8 @@ def progress(num_steps, metrics):
   if len(x_data) >= 2:
     num = x_data[-1] - x_data[-2]
     denom = (times[-1] - times[-2]).total_seconds()
-    fps = num / denom if denom > 0 else 0
+    if denom > 0:
+      fps = num / denom
 
     wandb.log({
         "perf/fps": fps,
@@ -103,6 +75,29 @@ def progress(num_steps, metrics):
 
   wandb.log(metrics, step=num_steps)
 
+def policy_params_fn(current_step, make_policy, params):
+  orbax_checkpointer = ocp.PyTreeCheckpointer()
+  save_args = orbax_utils.save_args_from_target(params)
+  path = ckpt_path / f"{current_step}"
+  orbax_checkpointer.save(path, params, force=True, save_args=save_args)
+
+train_params = dict(manipulation_params.brax_ppo_config(env_name))
+train_params['seed'] = 1
+train_params['num_evals'] = 30
+
+train_params["network_factory"] = functools.partial(
+    ppo_networks.make_ppo_networks,
+    **dict(train_params["network_factory"])
+  )
+
+train_params["progress_fn"] = progress
+train_params["training_metrics_steps"] = 10000
+train_params["log_training_metrics"] = True
+
+train_fn = functools.partial(ppo.train, **train_params)
+
+times = [datetime.now()]
+x_data = []
 
 env = manipulation.load(env_name, config=env_cfg)
 make_inference_fn, params, _ = train_fn(
@@ -110,9 +105,6 @@ make_inference_fn, params, _ = train_fn(
     environment=wrapper.wrap_for_brax_training(env,
                                                episode_length=env_cfg.episode_length,
                                                action_repeat=env_cfg.action_repeat),
-    progress_fn=progress,
-    training_metrics_steps=10000,
-    log_training_metrics=True,
 
 )
 print(f"time to jit: {times[1] - times[0]}")
@@ -135,7 +127,7 @@ for i in range(125):
   act_rng, key = jax.random.split(key)
   ctrl, _ = jit_inference_fn(state.obs, act_rng)
   state = jit_step(state, ctrl)
-  if i % render_every == 0:
+  if i % render_every == 0: 
     states.append(state)
 
 # In a script, we write the video to a file.
