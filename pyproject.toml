@@ -2,17 +2,18 @@
 name = "ppo_nnx"
 version = "0.1.0"
 description = "PPO NNX implementation"
-readme = "README.md"
 requires-python = ">=3.11, <3.13"
 dependencies = [
-    "flax>=0.10.0, <0.11.0", # migration to 0.11.0 required https://flax.readthedocs.io/en/latest/migrating/nnx_010_to_nnx_011.html
     "jax[cuda12]>=0.4.34, <0.7.0",
     "numpy>=2.1.2",
-    "orbax-checkpoint>=0.7.0",
+    "orbax-checkpoint==0.11.21", # bump when updating brax
     "brax",
     "matplotlib",
     "mediapy",
     "etils",
-    "playground @ git+https://github.com/google-deepmind/mujoco_playground.git",
+    "playground",
     "wandb",
+    "tyro",
 ]
+[tool.setuptools]
+py-modules = []
