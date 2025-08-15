@@ -6,3 +6,4 @@ wandb/
 __pycache__/
 videos/
 checkpoints/
+*.mp4
