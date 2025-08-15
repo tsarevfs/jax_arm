@@ -1,0 +1,8 @@
+.envrc
+*.egg-info
+.env/
+.git/
+wandb/
+__pycache__/
+videos/
+checkpoints/
